@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	addonsv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/apis/csiaddons/v1alpha1"
+	addonsv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/csiaddons/v1alpha1"
 	"github.com/pkg/errors"
 	"github.com/rook/rook/pkg/clusterd"
 
@@ -58,6 +58,8 @@ type ReconcileCSI struct {
 	opManagerContext   context.Context
 	opConfig           opcontroller.OperatorConfig
 	clustersWithHolder []ClusterDetail
+	// the first cluster CR which will determine some settings for the csi driver
+	firstCephCluster *cephv1.ClusterSpec
 }
 
 // ClusterDetail is a struct that holds the information of a cluster, it knows its internals (like
@@ -148,7 +150,6 @@ var reconcileSaveCSIDriverOptions = SaveCSIDriverOptions
 func (r *ReconcileCSI) reconcile(request reconcile.Request) (reconcile.Result, error) {
 	// reconcileResult is used to communicate the result of the reconciliation back to the caller
 	var reconcileResult reconcile.Result
-	var clusterNamespace string
 
 	ownerRef, err := k8sutil.GetDeploymentOwnerReference(r.opManagerContext, r.context.Clientset, os.Getenv(k8sutil.PodNameEnvVar), r.opConfig.OperatorNamespace)
 	if err != nil {
@@ -276,6 +277,10 @@ func (r *ReconcileCSI) reconcile(request reconcile.Request) (reconcile.Result, e
 			return reconcile.Result{}, nil
 		}
 
+		if r.firstCephCluster == nil {
+			r.firstCephCluster = &cephClusters.Items[i].Spec
+		}
+
 		// Load cluster info for later use in updating the ceph-csi configmap
 		clusterInfo, _, _, err := opcontroller.LoadClusterInfo(r.context, r.opManagerContext, cluster.Namespace, &cephClusters.Items[i].Spec)
 		if err != nil {
@@ -289,7 +294,6 @@ func (r *ReconcileCSI) reconcile(request reconcile.Request) (reconcile.Result, e
 			return opcontroller.ImmediateRetryResult, errors.Wrapf(err, "failed to load cluster info for cluster %q", cluster.Name)
 		}
 		clusterInfo.OwnerInfo = k8sutil.NewOwnerInfo(&cephClusters.Items[i], r.scheme)
-		clusterNamespace = clusterInfo.Namespace
 
 		// is holder enabled for this cluster?
 		thisHolderEnabled := (!csiHostNetworkEnabled || cluster.Spec.Network.IsMultus()) && !csiDisableHolders
@@ -325,14 +329,10 @@ func (r *ReconcileCSI) reconcile(request reconcile.Request) (reconcile.Result, e
 				return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to reconcile csi-op config CR")
 			}
 			return reconcileResult, nil
-		} else {
-			r.deleteCSIOperatorResources(clusterNamespace, false)
 		}
 	}
 
-	if !EnableCSIOperator() {
-		r.deleteCSIOperatorResources(clusterNamespace, true)
-
+	if !disableCSI && !EnableCSIOperator() {
 		err = r.validateAndConfigureDrivers(serverVersion, ownerInfo)
 		if err != nil {
 			return opcontroller.ImmediateRetryResult, errors.Wrap(err, "failed to configure ceph csi")

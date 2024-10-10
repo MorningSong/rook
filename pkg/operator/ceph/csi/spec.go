@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	cephv1 "github.com/rook/rook/pkg/apis/ceph.rook.io/v1"
 	"github.com/rook/rook/pkg/operator/ceph/cluster/telemetry"
 	opcontroller "github.com/rook/rook/pkg/operator/ceph/controller"
 	"github.com/rook/rook/pkg/operator/k8sutil"
@@ -41,7 +42,6 @@ import (
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
 
-	csiopv1a1 "github.com/ceph/ceph-csi-operator/api/v1alpha1"
 	cephcsi "github.com/ceph/ceph-csi/api/deploy/kubernetes"
 )
 
@@ -150,13 +150,13 @@ var (
 // manually challenging.
 var (
 	// image names
-	DefaultCSIPluginImage   = "quay.io/cephcsi/cephcsi:v3.11.0"
-	DefaultRegistrarImage   = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
-	DefaultProvisionerImage = "registry.k8s.io/sig-storage/csi-provisioner:v4.0.1"
-	DefaultAttacherImage    = "registry.k8s.io/sig-storage/csi-attacher:v4.5.1"
-	DefaultSnapshotterImage = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"
-	DefaultResizerImage     = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
-	DefaultCSIAddonsImage   = "quay.io/csiaddons/k8s-sidecar:v0.8.0"
+	DefaultCSIPluginImage   = "quay.io/cephcsi/cephcsi:v3.12.2"
+	DefaultRegistrarImage   = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.11.1"
+	DefaultProvisionerImage = "registry.k8s.io/sig-storage/csi-provisioner:v5.0.1"
+	DefaultAttacherImage    = "registry.k8s.io/sig-storage/csi-attacher:v4.6.1"
+	DefaultSnapshotterImage = "registry.k8s.io/sig-storage/csi-snapshotter:v8.0.1"
+	DefaultResizerImage     = "registry.k8s.io/sig-storage/csi-resizer:v1.11.1"
+	DefaultCSIAddonsImage   = "quay.io/csiaddons/k8s-sidecar:v0.10.0"
 
 	// image pull policy
 	DefaultCSIImagePullPolicy = string(corev1.PullIfNotPresent)
@@ -381,6 +381,7 @@ func (r *ReconcileCSI) startDrivers(ver *version.Info, ownerInfo *k8sutil.OwnerI
 		if tp.CSILogRotation {
 			applyLogrotateSidecar(&rbdProvisionerDeployment.Spec.Template, "csi-rbd-deployment-log-collector", LogrotateTemplatePath, tp)
 		}
+		rbdProvisionerDeployment.Spec.Template.Spec.HostNetwork = opcontroller.EnforceHostNetwork()
 
 		// Create service if either liveness or GRPC metrics are enabled.
 		if CSIParam.EnableLiveness {
@@ -418,6 +419,7 @@ func (r *ReconcileCSI) startDrivers(ver *version.Info, ownerInfo *k8sutil.OwnerI
 		if tp.CSILogRotation {
 			applyLogrotateSidecar(&cephfsProvisionerDeployment.Spec.Template, "csi-cephfs-deployment-log-collector", LogrotateTemplatePath, tp)
 		}
+		cephfsProvisionerDeployment.Spec.Template.Spec.HostNetwork = opcontroller.EnforceHostNetwork()
 
 		// Create service if either liveness or GRPC metrics are enabled.
 		if CSIParam.EnableLiveness {
@@ -456,6 +458,7 @@ func (r *ReconcileCSI) startDrivers(ver *version.Info, ownerInfo *k8sutil.OwnerI
 		if tp.CSILogRotation {
 			applyLogrotateSidecar(&nfsProvisionerDeployment.Spec.Template, "csi-nfs-deployment-log-collector", LogrotateTemplatePath, tp)
 		}
+		nfsProvisionerDeployment.Spec.Template.Spec.HostNetwork = opcontroller.EnforceHostNetwork()
 
 		enabledDrivers = append(enabledDrivers, driverDetails{
 			name:           NFSDriverShortName,
@@ -758,48 +761,6 @@ func (r *ReconcileCSI) stopDrivers(ver *version.Info) error {
 	return nil
 }
 
-func (r *ReconcileCSI) deleteCSIOperatorResources(clusterNamespace string, deleteOp bool) {
-	csiCephConnection := &csiopv1a1.CephConnection{}
-
-	err := r.client.DeleteAllOf(r.opManagerContext, csiCephConnection, &client.DeleteAllOfOptions{ListOptions: client.ListOptions{Namespace: clusterNamespace}})
-	if err != nil && !kerrors.IsNotFound(err) {
-		logger.Errorf("failed to delete CSI-operator Ceph Connection %q. %v", csiCephConnection.Name, err)
-	} else {
-		logger.Infof("deleted CSI-operator Ceph Connection %q", csiCephConnection.Name)
-	}
-
-	csiOpClientProfile := &csiopv1a1.ClientProfile{}
-	err = r.client.DeleteAllOf(r.opManagerContext, csiOpClientProfile, &client.DeleteAllOfOptions{ListOptions: client.ListOptions{Namespace: clusterNamespace}})
-	if err != nil && !kerrors.IsNotFound(err) {
-		logger.Errorf("failed to delete CSI-operator client profile %q. %v", csiOpClientProfile.Name, err)
-	} else {
-		logger.Infof("deleted CSI-operator client profile %q", csiOpClientProfile.Name)
-	}
-
-	err = r.deleteImageSetConfigMap()
-	if err != nil && !kerrors.IsNotFound(err) {
-		logger.Error("failed to delete imageSetConfigMap", err)
-	}
-
-	if deleteOp {
-		csiDriver := &csiopv1a1.Driver{}
-		err = r.client.DeleteAllOf(r.opManagerContext, csiDriver, &client.DeleteAllOfOptions{ListOptions: client.ListOptions{Namespace: r.opConfig.OperatorNamespace}})
-		if err != nil && !kerrors.IsNotFound(err) {
-			logger.Errorf("failed to delete CSI-operator driver config %q. %v", csiDriver.Name, err)
-		} else {
-			logger.Infof("deleted CSI-operator driver config %q", csiDriver.Name)
-		}
-
-		opConfig := &csiopv1a1.OperatorConfig{}
-		err = r.client.DeleteAllOf(r.opManagerContext, opConfig, &client.DeleteAllOfOptions{ListOptions: client.ListOptions{Namespace: r.opConfig.OperatorNamespace}})
-		if err != nil && !kerrors.IsNotFound(err) {
-			logger.Errorf("failed to delete CSI-operator operator config %q. %v", opConfig.Name, err)
-		} else {
-			logger.Infof("deleted CSI-operator operator config %q", opConfig.Name)
-		}
-	}
-}
-
 func (r *ReconcileCSI) deleteCSIDriverResources(ver *version.Info, daemonset, deployment, service, driverName string) error {
 	csiDriverobj := v1CsiDriver{}
 	err := k8sutil.DeleteDaemonset(r.opManagerContext, r.context.Clientset, r.opConfig.OperatorNamespace, daemonset)
@@ -873,6 +834,10 @@ func (r *ReconcileCSI) validateCSIVersion(ownerInfo *k8sutil.OwnerInfo) (*CephCS
 	job.Spec.Template.Spec.Tolerations = getToleration(r.opConfig.Parameters, provisionerTolerationsEnv, []corev1.Toleration{})
 	job.Spec.Template.Spec.Affinity = &corev1.Affinity{
 		NodeAffinity: getNodeAffinity(r.opConfig.Parameters, provisionerNodeAffinityEnv, &corev1.NodeAffinity{}),
+	}
+	if r.firstCephCluster != nil {
+		cephv1.GetCmdReporterAnnotations(r.firstCephCluster.Annotations).ApplyToObjectMeta(&job.Spec.Template.ObjectMeta)
+		cephv1.GetCmdReporterLabels(r.firstCephCluster.Labels).ApplyToObjectMeta(&job.Spec.Template.ObjectMeta)
 	}
 
 	stdout, _, retcode, err := versionReporter.Run(r.opManagerContext, timeout)

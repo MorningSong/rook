@@ -81,9 +81,6 @@ func (r *ReconcileCSI) generateCSIOpConfigSpec(cluster cephv1.CephCluster, opCon
 	}
 
 	opConfig.Spec = csiopv1a1.OperatorConfigSpec{
-		Log: &csiopv1a1.OperatorLogSpec{
-			Verbosity: int(CSIParam.LogLevel),
-		},
 		DriverSpecDefaults: &csiopv1a1.DriverSpec{
 			Log: &csiopv1a1.LogSpec{
 				Verbosity: int(CSIParam.LogLevel),
@@ -178,21 +175,4 @@ func (r *ReconcileCSI) createImageSetConfigmap() (string, error) {
 	logger.Infof("Successfully updated imageSet cm %s for ceph-CSI operator-config CR %q", cm.Name, opConfigCRName)
 
 	return cm.Name, nil
-}
-
-func (r *ReconcileCSI) deleteImageSetConfigMap() error {
-	cm := &v1.ConfigMap{}
-	err := r.client.Get(r.opManagerContext, types.NamespacedName{Name: cm.Name, Namespace: r.opConfig.OperatorNamespace}, cm)
-	if err != nil {
-		if kerrors.IsNotFound(err) {
-			return nil
-		}
-	}
-	err = r.client.Delete(r.opManagerContext, cm)
-	if nil != err {
-		return errors.Wrapf(err, "failed to delete imageSet configMap %v", cm.Name)
-	}
-	logger.Infof("deleted imageSet configMap %q", cm.Name)
-
-	return nil
 }

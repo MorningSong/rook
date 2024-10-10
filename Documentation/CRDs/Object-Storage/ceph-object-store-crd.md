@@ -148,7 +148,7 @@ The protocols section is divided into two parts:
 In the `s3` section of the `protocols` section the following options can be configured:
 
 * `authKeystone`: Whether S3 should also authenticated using Keystone (`true`) or not (`false`). If set to `false` the default S3 auth will be used.
-* `enabled`: Whether to enable S3 (`true`) or not (`false`). The default is `true` even if the section is not listed at all! Please note that S3 should not be disabled in a [Ceph Multi Site configuration](https://docs.ceph.com/en/quincy/radosgw/multisite).
+* `enabled`: Whether to enable S3 (`true`) or not (`false`). The default is `true` even if the section is not listed at all! Please note that S3 should not be disabled in a [Ceph Multi Site configuration](https://docs.ceph.com/en/latest/radosgw/multisite).
 
 #### protocols/swift settings
 
@@ -190,29 +190,35 @@ The gateway settings correspond to the RGW daemon settings.
     for more details. Multiple endpoints can be given, but for stability of ObjectBucketClaims, we
     highly recommend that users give only a single external RGW endpoint that is a load balancer that
     sends requests to the multiple RGWs.
+
+    Example of external rgw endpoints to connect to:
+
+    ```yaml
+    gateway:
+    port: 80
+    externalRgwEndpoints:
+      - ip: 192.168.39.182
+        # hostname: example.com
+    ```
+
 * `annotations`: Key value pair list of annotations to add.
 * `labels`: Key value pair list of labels to add.
 * `placement`: The Kubernetes placement settings to determine where the RGW pods should be started in the cluster.
 * `resources`: Set resource requests/limits for the Gateway Pod(s), see [Resource Requirements/Limits](../Cluster/ceph-cluster-crd.md#resource-requirementslimits).
 * `priorityClassName`: Set priority class name for the Gateway Pod(s)
+* `additionalVolumeMounts`: additional volumes to be mounted to the RGW pod. The root directory for
+    each additional volume mount is `/var/rgw`. Each volume mount has a `subPath` that defines the
+    subdirectory where that volumes files will be mounted. Rook supports several standard Kubernetes
+    volume types. Example: for an additional mount at subPath `ldap`, mounted from a secret that has
+    key `bindpass.secret`, the file would reside at `/var/rgw/ldap/bindpass.secret`.
 * `service`: The annotations to set on to the Kubernetes Service of RGW. The [service serving cert](https://docs.openshift.com/container-platform/4.6/security/certificates/service-serving-certificate.html) feature supported in Openshift is enabled by the following example:
 
-```yaml
-gateway:
-  service:
-    annotations:
+    ```yaml
+    gateway:
+    service:
+      annotations:
       service.beta.openshift.io/serving-cert-secret-name: <name of TLS secret for automatic generation>
-```
-
-Example of external rgw endpoints to connect to:
-
-```yaml
-gateway:
-  port: 80
-  externalRgwEndpoints:
-    - ip: 192.168.39.182
-      # hostname: example.com
-```
+    ```
 
 ## Zone Settings
 
@@ -326,9 +332,7 @@ vault kv put rook/<mybucketkey> key=$(openssl rand -base64 32) # kv engine
 vault write -f transit/keys/<mybucketkey> exportable=true # transit engine
 ```
 
-* TLS authentication with custom certificates between Vault and CephObjectStore RGWs are supported from ceph v16.2.6 onwards
 * `tokenSecretName` can be (and often will be) the same for both kms and s3 configurations.
-* `AWS-SSE:S3` requires Ceph Quincy v17.2.3 or later.
 
 ## Deleting a CephObjectStore
 

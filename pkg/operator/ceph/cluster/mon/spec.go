@@ -79,7 +79,7 @@ func GetFailureDomainLabel(spec cephv1.ClusterSpec) string {
 	}
 
 	if spec.ZonesRequired() && spec.Mon.FailureDomainLabel != "" {
-		return spec.Mon.StretchCluster.FailureDomainLabel
+		return spec.Mon.FailureDomainLabel
 	}
 	// The default topology label is for a zone
 	return corev1.LabelZoneFailureDomainStable
@@ -108,6 +108,7 @@ func (c *Cluster) makeDeployment(monConfig *monConfig, canary bool) (*apps.Deplo
 	}
 	replicaCount := int32(1)
 	d.Spec = apps.DeploymentSpec{
+		RevisionHistoryLimit: controller.RevisionHistoryLimit(),
 		Selector: &metav1.LabelSelector{
 			MatchLabels: c.getLabels(monConfig, canary, false),
 		},

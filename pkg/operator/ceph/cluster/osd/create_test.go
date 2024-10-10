@@ -310,7 +310,7 @@ func Test_startProvisioningOverPVCs(t *testing.T) {
 
 	clusterInfo := &cephclient.ClusterInfo{
 		Namespace:   namespace,
-		CephVersion: cephver.Quincy,
+		CephVersion: cephver.Squid,
 	}
 	clusterInfo.SetName("mycluster")
 	clusterInfo.OwnerInfo = cephclient.NewMinimumOwnerInfo(t)
@@ -353,7 +353,7 @@ func Test_startProvisioningOverPVCs(t *testing.T) {
 						Name:  "set1",
 						Count: 0,
 						VolumeClaimTemplates: []cephv1.VolumeClaimTemplate{
-							newDummyPVC("data", namespace, "10Gi", "gp2"),
+							newDummyPVC("data", namespace, "10Gi", "gp2-csi"),
 						},
 					},
 				},
@@ -378,7 +378,7 @@ func Test_startProvisioningOverPVCs(t *testing.T) {
 						Name:  "set1",
 						Count: 2,
 						VolumeClaimTemplates: []cephv1.VolumeClaimTemplate{
-							newDummyPVC("data", namespace, "10Gi", "gp2"),
+							newDummyPVC("data", namespace, "10Gi", "gp2-csi"),
 						},
 					},
 				},
@@ -447,7 +447,7 @@ func Test_startProvisioningOverNodes(t *testing.T) {
 
 	clusterInfo := &cephclient.ClusterInfo{
 		Namespace:   namespace,
-		CephVersion: cephver.Quincy,
+		CephVersion: cephver.Squid,
 	}
 	clusterInfo.SetName("mycluster")
 	clusterInfo.OwnerInfo = cephclient.NewMinimumOwnerInfo(t)
